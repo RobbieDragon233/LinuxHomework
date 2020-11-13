@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <iostream>
 #include <time.h>
+#include <mutex>
+#include <thread>
 #include "index.h"
 
 using namespace std;
@@ -16,6 +18,7 @@ class File{
 public:
     File();
     File(int row, int col, int attr);
+    ~File();
     bool hasFile();
     bool hasIndex();
     void CreatListFile();
@@ -32,6 +35,8 @@ private:
     long m_lReturnCode;
     long m_lErrorCode;
     Index index;
+    std::mutex semaphore;
+
 
 public:
     // bool Append(int64_t* data);
@@ -40,10 +45,24 @@ public:
     int Search(int row, int col);
 };
 
-void File::addData(int64_t *data){
-    int fd_of_list = open(list_file, O_APPEND);
-    write(fd_of_list, data, sizeof(data);
-    index.add(data);
+void File::addData(int64_t* data){
+    //This is a brute method
+    semaphore.lock();
+    cout<<"start add Data"<<endl;
+    cout<<data[0]<<" "<<data[1]<<endl;
+    cout<<"!!"<<endl;
+    int fd_of_list = open(list_file, O_APPEND | O_RDWR);
+    write(fd_of_list, data, sizeof(int64_t)*this->col);
+    // index.add(data);
+    semaphore.unlock();
+}
+
+File::File(){
+
+}
+
+File::~File(){
+
 }
 
 File::File(int row, int col, int attr){
@@ -216,10 +235,39 @@ int* File::Search(int attr, int64_t low, int64_t high, int return_num){
     return res;
 }
 
-int main(){
-    File a = File(10,1,1);
+void showData(){
+    int fd_of_list = open(list_file, O_RDONLY);
+    int64_t a[2];
+    while(read(fd_of_list, a, sizeof(a))){
+        cout<<a[0]<<" "<<a[1]<<endl;
+    }
+}
 
-    int fd = open(list_file, O_RDONLY);
+void add(File *f, int64_t *data, int i){
+    // need -lpthread
+    cout<<"-----add data "<< i <<" times-----"<<endl;
+    (*f).addData(data);
+}
+
+
+int main(void){
+    File a(3,2,2);
+
+    int64_t data[2];
+    data[0] = 10; data[1] = 23;
+    //, &a, data
+    thread t1(add, &a, data, 1);
+    thread t2(add, &a, data, 2);
+    thread t3(add, &a, data, 3);
+    thread t4(add, &a, data, 4);
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+
+    showData();
+
+    // int fd = open(list_file, O_RDONLY);
     // int64_t b[10];
     // read(fd, b, sizeof(b));
     // for(int i=0;i<10;i++){
@@ -230,19 +278,19 @@ int main(){
     // cout<<sizeof(b)<<endl;
     // cout<<a.Search(2,7)<<endl;
 
-    cout<<"Begin Search"<<endl;
-    int* c = a.Search(1,0,1182245360);
-    if(c[0] == -1){
-        cout<<"There is no num"<<endl;
-    }else{
-        cout<<"The number:"<<c[0]<<endl;
-        for(int i=1;i<c[0];i++){
-            cout<<"!!!"<<endl;
-            cout<<c[i]<<endl;
-        }
-    }
+    // cout<<"Begin Search"<<endl;
+    // int* c = a.Search(1,0,1182245360);
+    // if(c[0] == -1){
+    //     cout<<"There is no num"<<endl;
+    // }else{
+    //     cout<<"The number:"<<c[0]<<endl;
+    //     for(int i=1;i<c[0];i++){
+    //         cout<<"!!!"<<endl;
+    //         cout<<c[i]<<endl;
+    //     }
+    // }
     
-    cout<<a.Search(1,1)<<endl;
+    // cout<<a.Search(1,1)<<endl;
     // cout<<a.Search(1,5)<<endl;
 
 }
