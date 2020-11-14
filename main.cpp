@@ -49,11 +49,10 @@ void File::addData(int64_t* data){
     //This is a brute method
     semaphore.lock();
     cout<<"start add Data"<<endl;
-    cout<<data[0]<<" "<<data[1]<<endl;
-    cout<<"!!"<<endl;
     int fd_of_list = open(list_file, O_APPEND | O_RDWR);
+    this->row++;
     write(fd_of_list, data, sizeof(int64_t)*this->col);
-    // index.add(data);
+    index.add(data);
     semaphore.unlock();
 }
 
@@ -62,32 +61,39 @@ File::File(){
 }
 
 File::~File(){
-
+    int fd = open(list_file, O_RDWR | O_CREAT);
+    write(fd, &this->row, sizeof(this->row));
+    write(fd, &this->col, sizeof(this->col));
 }
 
 File::File(int row, int col, int attr){
+    //changed the attr start from 0
+    attr--;
     if(this->hasFile()){
-        this->row = row;
-        this->col = col;
+        int fd_of_list = open(list_file, O_RDONLY);
+        read(fd_of_list, &(this->row), sizeof(this->row));
+        read(fd_of_list, &(this->col), sizeof(this->col));
+        cout<<"row:"<<this->row<<" col:"<<this->col<<endl;
         cout<<"There exist a List File"<<endl;
-        //pass
     }else{
         this->row = row;
         this->col = col;
         this->CreatListFile();
     }
     
-    if(this->hasIndex()){
-        //pass
-    }else{
+    // if(this->hasIndex()){
+    //     //pass
+    // }else{
         this->CreatIndexFile(attr);
-    }
+    // }
 }
 
 void File::CreatListFile(){
     cout<<"create the List File"<<endl;
 
     int fd = open(list_file, O_RDWR | O_CREAT);
+    write(fd, &this->row, sizeof(this->row));
+    write(fd, &this->col, sizeof(this->col));
     int64_t tmp;
     srand(time(0));
     if(fd == -1){
@@ -157,7 +163,7 @@ int File::Search(int row, int col){
     // }
 
     //use lseek to change
-    lseek(fd, (row-1)*(this->col*8)+(col-1)*8, SEEK_SET);
+    lseek(fd, 2*(sizeof(int))+(row-1)*(this->col*8)+(col-1)*8, SEEK_SET);
     read(fd,&res,sizeof(res));
     close(fd);
     return res;
@@ -168,8 +174,10 @@ int* File::Search(int attr, int64_t low, int64_t high){
     // now the policy of search is that the first number is the num of the arry
     // If there exist time, I want to change the return num is the number and add a *res parameter
 
+    //-1 means not have data
+    attr--;
     int* index_res = this->index.Search(attr, low, high);
-    if(index_res[0] == -1){
+    if(index_res[0] == -2){
         cout<<"this attr does't build index"<<endl;
     }else{
         cout<<"solved by index"<<endl;
@@ -179,7 +187,7 @@ int* File::Search(int attr, int64_t low, int64_t high){
     cout<<"search a range by File"<<endl;
 
     int64_t readNum;
-    int point = this->block * (attr - 1) - this->block * this-> col;
+    int point = 2 * sizeof(int)+ this->block * attr - this->block * this-> col;
     int* res = NULL;
     this->search_num = 1;
 
@@ -191,10 +199,11 @@ int* File::Search(int attr, int64_t low, int64_t high){
         // cout<<"point:"<<point<<endl;
         lseek(fd, point, SEEK_SET);
         read(fd, &readNum, this->block);
+        // cout<<"readNum: "<<readNum<<endl;
         if(readNum < high && readNum >=low){
             this->search_num++;
             res = (int*)realloc(res, (this->search_num)*sizeof(int));
-            res[this->search_num-1] = i;
+            res[this->search_num-1] = i + 1;
         }
     }
     if(this->search_num == 1){
@@ -207,6 +216,7 @@ int* File::Search(int attr, int64_t low, int64_t high){
 }
 
 int* File::Search(int attr, int64_t low, int64_t high, int return_num){
+    attr--;
     cout<<"search a range by File and ask the return num"<<endl;
 
     int64_t readNum;
@@ -237,9 +247,13 @@ int* File::Search(int attr, int64_t low, int64_t high, int return_num){
 
 void showData(){
     int fd_of_list = open(list_file, O_RDONLY);
-    int64_t a[2];
+    int a1,a2;
+    read(fd_of_list, &a1, sizeof(int));
+    read(fd_of_list, &a2, sizeof(int));
+    cout<<a1<<" "<<a2<<endl;
+    int64_t a[3];
     while(read(fd_of_list, a, sizeof(a))){
-        cout<<a[0]<<" "<<a[1]<<endl;
+        cout<<a[0]<<" "<<a[1]<<" "<<a[2]<<endl;
     }
 }
 
@@ -251,11 +265,13 @@ void add(File *f, int64_t *data, int i){
 
 
 int main(void){
-    File a(3,2,2);
-
-    int64_t data[2];
-    data[0] = 10; data[1] = 23;
-    //, &a, data
+    int attr = 100;
+    File a(1000000,100,1);
+    // showData();
+    cout<<"----------thread------------"<<endl;
+    //muti_thread
+    int64_t data[3];
+    data[0] = 10; data[1] = 20; data[2] = 30;
     thread t1(add, &a, data, 1);
     thread t2(add, &a, data, 2);
     thread t3(add, &a, data, 3);
@@ -264,8 +280,52 @@ int main(void){
     t2.join();
     t3.join();
     t4.join();
+    cout<<"----------add------------"<<endl;
+    //add
+    srand(time(0));
+    int64_t add_data[attr];
+    for(int i = 0;i<attr;i++){
+        add_data[i]=rand();
+    }
+    a.addData(add_data);
+    cout<<"----------range------------"<<endl;
+    //search by a range
+    int* b = a.Search(1,10, 11);
+    if(b[0] == -1){
+        cout<<"There is no num"<<endl;
+    }else{
+        cout<<"The number:"<<b[0] - 1<<endl;
+        for(int i=1;i<b[0];i++){
+            cout<<b[i]<<" ";
+        }
+        cout<<endl;
+    }
+    cout<<"----------another attr------------"<<endl;
+    //search another attr
+    int* c = a.Search(2,19,21);
+    if(c[0] == -1){
+        cout<<"There is no num"<<endl;
+    }else{
+        cout<<"The number:"<<c[0] - 1<<endl;
+        for(int i=1;i<c[0];i++){
+            cout<<c[i]<<" ";
+        }
+        cout<<endl;
+    }
+    cout<<"---------10 row-------------"<<endl;
+    //search return 10 row
+    int* d = a.Search(1, INT64_MAX/4, INT64_MAX);
+    if(d[0] == -1){
+        cout<<"There is no num"<<endl;
+    }else{
+        cout<<"The number:"<<d[0] - 1<<endl;
+        for(int i=1;i<d[0];i++){
+            cout<<d[i]<<" ";
+        }
+        cout<<endl;
+    }
 
-    showData();
+    // showData();
 
     // int fd = open(list_file, O_RDONLY);
     // int64_t b[10];
